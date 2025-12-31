@@ -97,7 +97,7 @@ class Metrics {
             ];
         }, function (array $result) use($promise): void {
             [$response, $error, $status] = $result;
-            if (($response === false || $error !== "") && $this->getMetricsSettings()->isLogFailedRequests()) {
+            if ($response === false || $error !== "") {
                 $promise->reject($result);
                 return;
             }
