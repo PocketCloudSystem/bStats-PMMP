@@ -70,13 +70,14 @@ class Metrics {
 
         if (json_last_error() !== JSON_ERROR_NONE) {
             CloudLogger::get()->error("Error whilst encoding bStats data: " . ($jsonLastError = json_last_error_msg()));
-            return Promise::rejected($jsonLastError);
+            return $promise->reject($jsonLastError);
         }
 
         AsyncExecutor::execute(static function () use($data): array {
             $url = 'https://bstats.org/api/v2/data/bukkit';
             $ch = curl_init($url);
 
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_POST, true);
@@ -94,26 +95,26 @@ class Metrics {
             curl_close($ch);
 
             return [
-                "response" => $response,
-                "error" => $error,
-                "status" => $statusCode
+                $response,
+                $error,
+                $statusCode
             ];
-        }, function (array $result, Promise $promise): void {
+        }, function (array $result) use($promise): void {
             [$response, $error, $status] = $result;
             if (($response === false || $error !== "") && $this->getMetricsSettings()->isLogFailedRequests()) {
                 CloudLogger::get()->error("Error whilst sending data to bStats: " . $error);
-                $promise->reject([$error, $status]);
+                $promise->reject($result);
                 return;
             }
 
             if (str_starts_with((string) $status, "4")) {
                 CloudLogger::get()->error("Error whilst sending data to bStats, got HTTP Status Code " . $status . ": " . $error);
-                $promise->reject([$error, $status]);
+                $promise->reject($result);
                 return;
             }
 
             $promise->resolve($response);
-        }, $promise);
+        });
 
         return $promise;
     }
