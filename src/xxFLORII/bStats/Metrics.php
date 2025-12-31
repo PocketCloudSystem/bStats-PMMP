@@ -3,11 +3,7 @@
 namespace xxFLORII\bStats;
 
 use pocketmine\plugin\PluginBase;
-use pocketmine\scheduler\Task;
 use pocketmine\Server;
-use pocketmine\utils\Config;
-use pocketmine\utils\Internet;
-use pocketmine\utils\SingletonTrait;
 use xxFLORII\bStats\charts\CustomChart;
 use xxFLORII\bStats\settings\MetricsSettings;
 
@@ -22,34 +18,36 @@ class Metrics {
         $this->plugin = $plugin;
         $this->metricsSettings = new MetricsSettings($plugin, $pluginId);
 
-        if ($this->metricsSettings->getPluginId() == null || gettype($this->metricsSettings->getPluginId()) != "integer") $plugin->getLogger()->notice($plugin->getDataFolder()."bStats/config.yml: Key 'plugin-id' must be an integer!");
+        if ($this->metricsSettings->getPluginId() == null ||
+            gettype($this->metricsSettings->getPluginId()) !=
+            "integer") $plugin->getLogger()->notice($plugin->getDataFolder() .
+            "bStats/config.yml: Key 'plugin-id' must be an integer!");
         if ($this->getMetricsSettings()->isEnabled()) {
-            Server::getInstance()->getLogger()->info($plugin->getName() . " collect metrics and send them to bStats (https://bStats.org).");
+            Server::getInstance()->getLogger()->info($plugin->getName() .
+                " collect metrics and send them to bStats (https://bStats.org).");
             Server::getInstance()->getLogger()->info("bStats collects some basic information for plugin authors, like how many people use, their plugin and their total player count.");
             Server::getInstance()->getLogger()->info("It's recommended to keep bStats enabled, but if you're not comfortable with this, you can opt-out by editing the config.yml file in the '/bStats/' folder and setting enabled to false.");
         }
     }
 
-    public function add(CustomChart $chart): self{
+    /**
+     * @return MetricsSettings
+     */
+    public function getMetricsSettings(): MetricsSettings {
+        return $this->metricsSettings;
+    }
+
+    public function add(CustomChart $chart): self {
         $this->charts[$chart->getCustomId()] = $chart;
         return $this;
     }
 
-    public function remove(string $custom_id): self{
+    public function remove(string $custom_id): self {
         if (isset($this->charts[$custom_id])) unset($this->charts[$custom_id]);
         return $this;
     }
 
-    /**
-     * @return MetricsSettings
-     */
-    public function getMetricsSettings(): MetricsSettings
-    {
-        return $this->metricsSettings;
-    }
-
-    public function sendData(): void
-    {
+    public function sendData(): void {
         $customCharts = [];
 
         foreach ($this->charts as $chart) {
@@ -59,19 +57,19 @@ class Metrics {
         $server = $this->plugin->getServer();
         if (stristr(PHP_OS, 'win')) {
             $output = trim(shell_exec('wmic cpu get NumberOfCores'));
-            $coreCount = preg_match_all('/\d+/', $output, $matches) ? (int) $matches[0][0] : 0;
+            $coreCount = preg_match_all('/\d+/', $output, $matches) ? (int)$matches[0][0] : 0;
         } else {
-            $coreCount = (int) shell_exec('nproc');
+            $coreCount = (int)shell_exec('nproc');
         }
 
         $optional_data = [
-            "onlineMode"    => $server->getOnlineMode() ? 1 : 0,
-            "playerAmount"  => count($server->getOnlinePlayers()),
-            "bukkitName"    => $server->getName(),
-            "osName"        => php_uname("s"),
-            "osArch"        => php_uname("m"),
-            "osVersion"     => php_uname("v"),
-            "coreCount"     => $coreCount,
+            "onlineMode" => $server->getOnlineMode() ? 1 : 0,
+            "playerAmount" => count($server->getOnlinePlayers()),
+            "bukkitName" => $server->getName(),
+            "osName" => php_uname("s"),
+            "osArch" => php_uname("m"),
+            "osVersion" => php_uname("v"),
+            "coreCount" => $coreCount,
         ];
 
         $data = json_encode([
@@ -108,23 +106,5 @@ class Metrics {
         }
 
         curl_close($ch);
-    }
-
-
-    public function scheduleMetricsDataSend(): void
-    {
-        $this->plugin->getScheduler()->scheduleRepeatingTask(new class($this) extends Task {
-            private Metrics $metrics;
-
-            public function __construct(Metrics $metrics) {
-                $this->metrics = $metrics;
-            }
-
-            public function onRun(): void {
-                if ($this->metrics->getMetricsSettings()->isEnabled()) {
-                    $this->metrics->sendData();
-                }
-            }
-        }, 20 * 60 * 30);
     }
 }

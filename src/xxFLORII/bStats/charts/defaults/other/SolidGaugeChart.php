@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
+
 namespace xxFLORII\bStats\charts\defaults\other;
+
 use xxFLORII\bStats\charts\CallbackChart;
 
 /**
@@ -12,8 +14,12 @@ use xxFLORII\bStats\charts\CallbackChart;
  * ```
  */
 class SolidGaugeChart extends CallbackChart {
-    public static function getType(): string{ return "solidgauge"; }
-    protected function getValue(): mixed{
+
+    public static function getType(): string {
+        return "solidgauge";
+    }
+
+    protected function getValue(): mixed {
         $value = $this->call();
         if ($value === null || $value === "") return null;
         return $value;

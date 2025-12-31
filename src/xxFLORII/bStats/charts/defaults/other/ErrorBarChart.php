@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
+
 namespace xxFLORII\bStats\charts\defaults\other;
+
 use xxFLORII\bStats\charts\CallbackChart;
 
 /**
@@ -16,16 +18,14 @@ use xxFLORII\bStats\charts\CallbackChart;
  * ```
  */
 class ErrorBarChart extends CallbackChart {
-    public static function getType(): string{ return "errorbar"; }
 
-    protected function getValue(): mixed{
-        // Ruft den Callback auf, um die Daten zu generieren
+    public static function getType(): string {
+        return "errorbar";
+    }
+
+    protected function getValue(): mixed {
         $value = $this->call();
-
-        // Falls der Rückgabewert leer oder null ist, wird das Diagramm übersprungen
         if (empty($value)) return null;
-
-        // Gibt die generierten Werte zurück
         return $value;
     }
 }

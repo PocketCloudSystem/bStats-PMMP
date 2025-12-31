@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
+
 namespace xxFLORII\bStats\charts\defaults\basic;
+
 use xxFLORII\bStats\charts\CallbackChart;
 
 /**
@@ -12,8 +14,12 @@ use xxFLORII\bStats\charts\CallbackChart;
  * ```
  */
 class ColumnChart extends CallbackChart {
-    public static function getType(): string{ return "column"; }
-    protected function getValue(): mixed{
+
+    public static function getType(): string {
+        return "column";
+    }
+
+    protected function getValue(): mixed {
         $value = $this->call();
         if (empty($value)) return null;
         return $value;
