@@ -4,7 +4,8 @@ namespace xxFLORII\bStats;
 
 use pocketcloud\cloud\console\log\CloudLogger;
 use pocketcloud\cloud\player\CloudPlayerManager;
-use pocketcloud\cloud\PocketCloud;
+use pocketcloud\cloud\util\AsyncExecutor;
+use pocketcloud\cloud\util\promise\Promise;
 use pocketcloud\cloud\util\VersionInfo;
 use xxFLORII\bStats\charts\CustomChart;
 use xxFLORII\bStats\settings\MetricsSettings;
@@ -14,7 +15,7 @@ class Metrics {
     /** @var CustomChart[] $charts */
     private array $charts = [];
 
-    public function __construct(private MetricsSettings $metricsSettings) {}
+    public function __construct(private readonly MetricsSettings $metricsSettings) {}
 
     /**
      * @return MetricsSettings
@@ -33,7 +34,8 @@ class Metrics {
         return $this;
     }
 
-    public function sendData(): void {
+    public function sendData(): Promise {
+        $promise = new Promise();
         $customCharts = [];
 
         foreach ($this->charts as $chart) {
@@ -64,32 +66,55 @@ class Metrics {
                 "id" => $this->getMetricsSettings()->getPluginId(),
                 "customCharts" => $customCharts
             ]
-        ], JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+        ], JSON_UNESCAPED_SLASHES);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
-            CloudLogger::get()->error("Error whilst encoding bStats data: " . json_last_error_msg());
-            return;
+            CloudLogger::get()->error("Error whilst encoding bStats data: " . ($jsonLastError = json_last_error_msg()));
+            return Promise::rejected($jsonLastError);
         }
 
-        $url = 'https://bstats.org/api/v2/data/bukkit';
-        $ch = curl_init($url);
+        AsyncExecutor::execute(static function () use($data): array {
+            $url = 'https://bstats.org/api/v2/data/bukkit';
+            $ch = curl_init($url);
 
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            "Content-Type: application/json",
-            "Content-Length: " . strlen($data),
-        ]);
-        curl_setopt($ch, CURLINFO_HEADER_OUT, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                "Content-Type: application/json",
+                "Content-Length: " . strlen($data),
+            ]);
+            curl_setopt($ch, CURLINFO_HEADER_OUT, true);
 
-        $response = curl_exec($ch);
+            $response = curl_exec($ch);
+            $error = curl_error($ch);
+            $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
-        if ($response === false || curl_errno($ch) && $this->getMetricsSettings()->isLogFailedRequests()) {
-            CloudLogger::get()->error("Error whilst sending data to bStats: " . curl_error($ch));
-        }
+            curl_close($ch);
 
-        curl_close($ch);
+            return [
+                "response" => $response,
+                "error" => $error,
+                "status" => $statusCode
+            ];
+        }, function (array $result, Promise $promise): void {
+            [$response, $error, $status] = $result;
+            if (($response === false || $error !== "") && $this->getMetricsSettings()->isLogFailedRequests()) {
+                CloudLogger::get()->error("Error whilst sending data to bStats: " . $error);
+                $promise->reject([$error, $status]);
+                return;
+            }
+
+            if (str_starts_with((string) $status, "4")) {
+                CloudLogger::get()->error("Error whilst sending data to bStats, got HTTP Status Code " . $status . ": " . $error);
+                $promise->reject([$error, $status]);
+                return;
+            }
+
+            $promise->resolve($response);
+        }, $promise);
+
+        return $promise;
     }
 }
