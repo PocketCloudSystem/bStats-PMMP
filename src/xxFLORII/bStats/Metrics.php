@@ -2,33 +2,19 @@
 
 namespace xxFLORII\bStats;
 
-use pocketmine\plugin\PluginBase;
-use pocketmine\Server;
+use pocketcloud\cloud\console\log\CloudLogger;
+use pocketcloud\cloud\player\CloudPlayerManager;
+use pocketcloud\cloud\PocketCloud;
+use pocketcloud\cloud\util\VersionInfo;
 use xxFLORII\bStats\charts\CustomChart;
 use xxFLORII\bStats\settings\MetricsSettings;
 
 class Metrics {
-    private PluginBase $plugin;
-    private MetricsSettings $metricsSettings;
 
     /** @var CustomChart[] $charts */
     private array $charts = [];
 
-    public function __construct(PluginBase $plugin, int $pluginId) {
-        $this->plugin = $plugin;
-        $this->metricsSettings = new MetricsSettings($plugin, $pluginId);
-
-        if ($this->metricsSettings->getPluginId() == null ||
-            gettype($this->metricsSettings->getPluginId()) !=
-            "integer") $plugin->getLogger()->notice($plugin->getDataFolder() .
-            "bStats/config.yml: Key 'plugin-id' must be an integer!");
-        if ($this->getMetricsSettings()->isEnabled()) {
-            Server::getInstance()->getLogger()->info($plugin->getName() .
-                " collect metrics and send them to bStats (https://bStats.org).");
-            Server::getInstance()->getLogger()->info("bStats collects some basic information for plugin authors, like how many people use, their plugin and their total player count.");
-            Server::getInstance()->getLogger()->info("It's recommended to keep bStats enabled, but if you're not comfortable with this, you can opt-out by editing the config.yml file in the '/bStats/' folder and setting enabled to false.");
-        }
-    }
+    public function __construct(private MetricsSettings $metricsSettings) {}
 
     /**
      * @return MetricsSettings
@@ -54,18 +40,16 @@ class Metrics {
             $customCharts[] = $chart->jsonSerialize();
         }
 
-        $server = $this->plugin->getServer();
         if (stristr(PHP_OS, 'win')) {
             $output = trim(shell_exec('wmic cpu get NumberOfCores'));
             $coreCount = preg_match_all('/\d+/', $output, $matches) ? (int)$matches[0][0] : 0;
         } else {
-            $coreCount = (int)shell_exec('nproc');
+            $coreCount = (int) shell_exec('nproc');
         }
 
         $optional_data = [
-            "onlineMode" => $server->getOnlineMode() ? 1 : 0,
-            "playerAmount" => count($server->getOnlinePlayers()),
-            "bukkitName" => $server->getName(),
+            "playerAmount" => count(CloudPlayerManager::getInstance()->getAll()),
+            "bukkitName" => "PocketCloud@v" . VersionInfo::VERSION,
             "osName" => php_uname("s"),
             "osArch" => php_uname("m"),
             "osVersion" => php_uname("v"),
@@ -83,7 +67,8 @@ class Metrics {
         ], JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
-            $this->plugin->getLogger()->error("Error whilst encoding bStats data: " . json_last_error_msg());
+            CloudLogger::get()->error("Error whilst encoding bStats data: " . json_last_error_msg());
+            return;
         }
 
         $url = 'https://bstats.org/api/v2/data/bukkit';
@@ -102,7 +87,7 @@ class Metrics {
         $response = curl_exec($ch);
 
         if ($response === false || curl_errno($ch) && $this->getMetricsSettings()->isLogFailedRequests()) {
-            $this->plugin->getLogger()->error("Error whilst sending data to bStats: " . curl_error($ch));
+            CloudLogger::get()->error("Error whilst sending data to bStats: " . curl_error($ch));
         }
 
         curl_close($ch);
