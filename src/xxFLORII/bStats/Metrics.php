@@ -2,6 +2,7 @@
 
 namespace xxFLORII\bStats;
 
+use pocketcloud\cloud\console\log\CloudLogger;
 use pocketcloud\cloud\player\CloudPlayerManager;
 use pocketcloud\cloud\util\AsyncExecutor;
 use pocketcloud\cloud\util\promise\Promise;
@@ -69,6 +70,7 @@ class Metrics {
 
         if (json_last_error() !== JSON_ERROR_NONE) return $promise->reject(json_last_error_msg());
 
+        if ($this->metricsSettings->isLogSentData()) CloudLogger::get()->forceDebug("Sending following data to bStats: " . $data);
         AsyncExecutor::execute(static function () use($data): array {
             $url = 'https://bstats.org/api/v2/data/bukkit';
             $ch = curl_init($url);
