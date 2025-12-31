@@ -2,7 +2,6 @@
 
 namespace xxFLORII\bStats;
 
-use pocketcloud\cloud\console\log\CloudLogger;
 use pocketcloud\cloud\player\CloudPlayerManager;
 use pocketcloud\cloud\util\AsyncExecutor;
 use pocketcloud\cloud\util\promise\Promise;
@@ -68,10 +67,7 @@ class Metrics {
             ]
         ], JSON_UNESCAPED_SLASHES);
 
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            CloudLogger::get()->error("Error whilst encoding bStats data: " . ($jsonLastError = json_last_error_msg()));
-            return $promise->reject($jsonLastError);
-        }
+        if (json_last_error() !== JSON_ERROR_NONE) return $promise->reject(json_last_error_msg());
 
         AsyncExecutor::execute(static function () use($data): array {
             $url = 'https://bstats.org/api/v2/data/bukkit';
@@ -102,13 +98,11 @@ class Metrics {
         }, function (array $result) use($promise): void {
             [$response, $error, $status] = $result;
             if (($response === false || $error !== "") && $this->getMetricsSettings()->isLogFailedRequests()) {
-                CloudLogger::get()->error("Error whilst sending data to bStats: " . $error);
                 $promise->reject($result);
                 return;
             }
 
             if (str_starts_with((string) $status, "4")) {
-                CloudLogger::get()->error("Error whilst sending data to bStats, got HTTP Status Code " . $status . ": " . $error);
                 $promise->reject($result);
                 return;
             }
