@@ -4,20 +4,12 @@ declare(strict_types=1);
 namespace xxFLORII\bStats\charts;
 
 use ErrorException;
-use InvalidArgumentException;
 use JsonSerializable;
 use Throwable;
 
 abstract class CustomChart implements JsonSerializable {
-    private string $custom_id;
 
-    public function __construct(string $custom_id) {
-        if ($custom_id == null) {
-            throw new InvalidArgumentException("Chart: $custom_id cannot be null");
-        }
-
-        $this->custom_id = $custom_id;
-    }
+    public function __construct(private readonly string $custom_id) {}
 
     public abstract static function getType(): string;
 
@@ -26,15 +18,13 @@ abstract class CustomChart implements JsonSerializable {
     }
 
     public function jsonSerialize(): array {
-        $json = [
-            "chartId" => $this->custom_id,
-        ];
+        $json = ["chartId" => $this->custom_id,];
         try {
             $data = $this->getValue();
-            if ($data === null) throw new ErrorException("\$data cannot be null");
+            if ($data === null) throw new ErrorException('$data cannot be null');
             $json["data"] = $data;
-        } catch (Throwable $ignored) {
-        }
+        } catch (Throwable) {}
+
         return $json;
     }
 
