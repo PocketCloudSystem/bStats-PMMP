@@ -36,8 +36,8 @@ class Metrics implements Tickable {
         if (!$this->metricsSettings->isEnabled()) return;
         $this->startSubmission = true;
 
-        $initialDelayMs = (int) (1000 * 60 * (3 + mt_rand() / mt_getrandmax() * 3));
-        $secondDelayMs = (int) (1000 * 60 * (mt_rand() / mt_getrandmax() * 30));
+        $initialDelayMs = (int) (1000 * 60 * (3 + (mt_rand() / mt_getrandmax()) * 3));
+        $secondDelayMs = (int) (1000 * 60 * ((mt_rand() / mt_getrandmax()) * 30));
 
         $this->initialDelayTick = round(PocketCloud::getInstance()->getTick() + ($secondDelayMs * 0.02));
         $this->nextSubmissionTick = round((($initialDelayMs + $secondDelayMs) * 0.02) + PocketCloud::getInstance()->getTick());
@@ -114,6 +114,9 @@ class Metrics implements Tickable {
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 "Content-Type: application/json",
                 "Content-Length: " . strlen($data),
+                "User-Agent: Metrics-Service/1",
+                "Connection: close",
+                "Content-Encoding: gzip"
             ]);
             curl_setopt($ch, CURLINFO_HEADER_OUT, true);
 
