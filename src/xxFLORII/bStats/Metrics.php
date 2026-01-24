@@ -6,7 +6,6 @@ use pocketcloud\cloud\console\log\CloudLogger;
 use pocketcloud\cloud\PocketCloud;
 use pocketcloud\cloud\util\AsyncExecutor;
 use pocketcloud\cloud\util\misc\Tickable;
-use pocketcloud\cloud\util\promise\Promise;
 use xxFLORII\bStats\chart\CustomChart;
 use xxFLORII\bStats\settings\MetricsSettings;
 
@@ -34,16 +33,20 @@ class Metrics implements Tickable {
     }
 
     public function startSubmitting(): void {
+        if (!$this->metricsSettings->isEnabled()) return;
         $this->startSubmission = true;
 
         $initialDelayMs = (int) (1000 * 60 * (3 + mt_rand() / mt_getrandmax() * 3));
         $secondDelayMs = (int) (1000 * 60 * (mt_rand() / mt_getrandmax() * 30));
 
-        $this->initialDelayTick = PocketCloud::getInstance()->getTick() + ($secondDelayMs * 0.02);
-        $this->nextSubmissionTick = (($initialDelayMs + $secondDelayMs) * 0.02) + PocketCloud::getInstance()->getTick();
+        $this->initialDelayTick = round(PocketCloud::getInstance()->getTick() + ($secondDelayMs * 0.02));
+        $this->nextSubmissionTick = round((($initialDelayMs + $secondDelayMs) * 0.02) + PocketCloud::getInstance()->getTick());
+
+        CloudLogger::get()->debug("First bStats submission on tick: " . $this->initialDelayTick);
     }
 
     public function tick(int $currentTick): void {
+        if (!$this->metricsSettings->isEnabled()) return;
         if ($this->initialDelayTick !== 0) {
             if ($currentTick >= $this->initialDelayTick) {
                 $this->sendData();
@@ -57,9 +60,8 @@ class Metrics implements Tickable {
         }
     }
 
-    protected function sendData(): Promise {
-        if (!$this->startSubmission || !$this->metricsSettings->isEnabled()) return Promise::rejected();
-        $promise = new Promise();
+    private function sendData(): void {
+        if (!$this->startSubmission || !$this->metricsSettings->isEnabled()) return;
         $customCharts = [];
         foreach ($this->charts as $chart) {
             if (($serializedChart = $chart->jsonSerialize()) !== null) {
@@ -91,9 +93,14 @@ class Metrics implements Tickable {
             ]
         ], JSON_UNESCAPED_SLASHES);
 
-        if (json_last_error() !== JSON_ERROR_NONE) return $promise->reject(json_last_error_msg());
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            CloudLogger::get()->error("Failed to submit data to bStats: §e{}", json_last_error_msg());
+            return;
+        }
 
         if ($this->metricsSettings->isLogSentData()) CloudLogger::get()->forceDebug("Sending following data to bStats: " . $data);
+        else CloudLogger::get()->debug("Sending bStats data...");
+
         AsyncExecutor::execute(static function () use($data): array {
             $url = 'https://bstats.org/api/v2/data/server-implementation';
             $ch = curl_init($url);
@@ -121,22 +128,20 @@ class Metrics implements Tickable {
                 $error,
                 $statusCode
             ];
-        }, function (array $result) use($promise): void {
+        }, function (array $result): void {
             [$response, $error, $status] = $result;
-            if ($response === false || $error !== "") {
-                $promise->reject($result);
+            if ($response === false || $error !== "" || str_starts_with((string) $status, "4")) {
+                CloudLogger::get()->error("Failed to submit data to bStats §8(§cHTTP Status Code §e{}§8)§c: §e{}", $status, ($error == "" ? ($response ?: "Unknown") : $error));
                 return;
             }
 
-            if (str_starts_with((string) $status, "4")) {
-                $promise->reject($result);
-                return;
-            }
-
-            $promise->resolve($response);
+            CloudLogger::get()->debug("Successfully submitted bStats data");
+            if ($this->metricsSettings->isLogResponseStatusText()) CloudLogger::get()->forceDebug("bStats response: {}", $response);
         });
+    }
 
-        return $promise;
+    public function isStartSubmission(): bool {
+        return $this->startSubmission;
     }
 
     public function getCharts(): array {
