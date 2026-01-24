@@ -3,43 +3,68 @@
 namespace xxFLORII\bStats;
 
 use pocketcloud\cloud\console\log\CloudLogger;
-use pocketcloud\cloud\player\CloudPlayerManager;
+use pocketcloud\cloud\PocketCloud;
 use pocketcloud\cloud\util\AsyncExecutor;
+use pocketcloud\cloud\util\misc\Tickable;
 use pocketcloud\cloud\util\promise\Promise;
-use pocketcloud\cloud\util\VersionInfo;
-use xxFLORII\bStats\charts\CustomChart;
+use xxFLORII\bStats\chart\CustomChart;
 use xxFLORII\bStats\settings\MetricsSettings;
 
-class Metrics {
+class Metrics implements Tickable {
+
+    public const int FIXED_SUBMISSION_INTERVAL = 20 * 60 * 30; // <- ticks | ms: 1000 * 60 * 30
+
+    private bool $startSubmission = false;
+    private int $initialDelayTick = 0;
+    private int $nextSubmissionTick = 0;
 
     /** @var CustomChart[] $charts */
     private array $charts = [];
 
     public function __construct(private readonly MetricsSettings $metricsSettings) {}
 
-    /**
-     * @return MetricsSettings
-     */
-    public function getMetricsSettings(): MetricsSettings {
-        return $this->metricsSettings;
-    }
-
-    public function add(CustomChart $chart): self {
+    public function addChart(CustomChart $chart): self {
         $this->charts[$chart->getCustomId()] = $chart;
         return $this;
     }
 
-    public function remove(string $custom_id): self {
-        if (isset($this->charts[$custom_id])) unset($this->charts[$custom_id]);
+    public function removeChart(string $customId): self {
+        if (isset($this->charts[$customId])) unset($this->charts[$customId]);
         return $this;
     }
 
-    public function sendData(): Promise {
+    public function startSubmitting(): void {
+        $this->startSubmission = true;
+
+        $initialDelayMs = (int) (1000 * 60 * (3 + mt_rand() / mt_getrandmax() * 3));
+        $secondDelayMs = (int) (1000 * 60 * (mt_rand() / mt_getrandmax() * 30));
+
+        $this->initialDelayTick = PocketCloud::getInstance()->getTick() + ($secondDelayMs * 0.02);
+        $this->nextSubmissionTick = (($initialDelayMs + $secondDelayMs) * 0.02) + PocketCloud::getInstance()->getTick();
+    }
+
+    public function tick(int $currentTick): void {
+        if ($this->initialDelayTick !== 0) {
+            if ($currentTick >= $this->initialDelayTick) {
+                $this->sendData();
+                $this->initialDelayTick = 0;
+            }
+        } else {
+            if ($currentTick >= $this->nextSubmissionTick) {
+                $this->sendData();
+                $this->nextSubmissionTick = $currentTick + self::FIXED_SUBMISSION_INTERVAL;
+            }
+        }
+    }
+
+    protected function sendData(): Promise {
+        if (!$this->startSubmission || !$this->metricsSettings->isEnabled()) return Promise::rejected();
         $promise = new Promise();
         $customCharts = [];
-
         foreach ($this->charts as $chart) {
-            $customCharts[] = $chart->jsonSerialize();
+            if (($serializedChart = $chart->jsonSerialize()) !== null) {
+                $customCharts[] = $serializedChart;
+            }
         }
 
         if (stristr(PHP_OS, 'win')) {
@@ -50,20 +75,18 @@ class Metrics {
         }
 
         $optional_data = [
-            "playerAmount" => count(CloudPlayerManager::getInstance()->getAll()),
-            "bukkitName" => "PocketCloud@v" . VersionInfo::VERSION,
             "osName" => php_uname("s"),
             "osArch" => php_uname("m"),
             "osVersion" => php_uname("v"),
-            "coreCount" => $coreCount,
+            "coreCount" => $coreCount
         ];
 
         $data = json_encode([
             ...$optional_data,
-            "serverUUID" => $this->getMetricsSettings()->getServerUUID(),
-            "metricsVersion" => $this->getMetricsSettings()->getMetricsVersion(),
+            "serverUUID" => $this->metricsSettings->getServerUUID(),
+            "metricsVersion" => $this->metricsSettings->getMetricsVersion(),
             "service" => [
-                "id" => $this->getMetricsSettings()->getPluginId(),
+                "id" => $this->metricsSettings->getPluginId(),
                 "customCharts" => $customCharts
             ]
         ], JSON_UNESCAPED_SLASHES);
@@ -72,8 +95,9 @@ class Metrics {
 
         if ($this->metricsSettings->isLogSentData()) CloudLogger::get()->forceDebug("Sending following data to bStats: " . $data);
         AsyncExecutor::execute(static function () use($data): array {
-            $url = 'https://bstats.org/api/v2/data/bukkit';
+            $url = 'https://bstats.org/api/v2/data/server-implementation';
             $ch = curl_init($url);
+            $data = zlib_encode($data, ZLIB_ENCODING_GZIP);
 
             curl_setopt($ch, CURLOPT_TIMEOUT, 10);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
@@ -113,5 +137,13 @@ class Metrics {
         });
 
         return $promise;
+    }
+
+    public function getCharts(): array {
+        return $this->charts;
+    }
+
+    public function getSettings(): MetricsSettings {
+        return $this->metricsSettings;
     }
 }

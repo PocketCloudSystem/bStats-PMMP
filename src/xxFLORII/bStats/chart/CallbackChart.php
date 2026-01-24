@@ -1,7 +1,8 @@
 <?php
+
 declare(strict_types=1);
 
-namespace xxFLORII\bStats\charts;
+namespace xxFLORII\bStats\chart;
 
 use Closure;
 use pocketcloud\cloud\console\log\CloudLogger;
@@ -11,10 +12,10 @@ use Throwable;
 abstract class CallbackChart extends CustomChart {
 
     public function __construct(
-        string $custom_id,
+        string $customId,
         protected readonly Closure $callback
     ) {
-        parent::__construct($custom_id);
+        parent::__construct($customId);
     }
 
     protected function call(): mixed {
