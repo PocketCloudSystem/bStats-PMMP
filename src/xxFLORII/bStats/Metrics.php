@@ -134,7 +134,7 @@ class Metrics implements Tickable {
         }, function (array $result): void {
             [$response, $error, $status] = $result;
             if ($response === false || $error !== "" || str_starts_with((string) $status, "4")) {
-                CloudLogger::get()->error("Failed to submit data to bStats §8(§cHTTP Status Code §e{}§8)§c: §e{}", $status, ($error == "" ? ($response ?: "Unknown") : $error));
+                if ($this->metricsSettings->isLogFailedRequests()) CloudLogger::get()->error("Failed to submit data to bStats §8(§cHTTP Status Code §e{}§8)§c: §e{}", $status, ($error == "" ? ($response ?: "Unknown") : $error));
                 return;
             }
 
